@@ -86,13 +86,40 @@ class ConfidenceRouter:
         #      action="escalate", priority="high",
         #      requires_human=True, reason="Low confidence — escalating"
 
+        if action_type in HIGH_RISK_ACTIONS:
+            return RoutingDecision(
+                action="escalate",
+                confidence=confidence,
+                reason=f"High-risk action: {action_type}",
+                priority="high",
+                requires_human=True,
+            )
+
+        if confidence >= self.HIGH_THRESHOLD:
+            return RoutingDecision(
+                action="auto_send",
+                confidence=confidence,
+                reason="High confidence",
+                priority="low",
+                requires_human=False,
+            )
+
+        if confidence >= self.MEDIUM_THRESHOLD:
+            return RoutingDecision(
+                action="queue_review",
+                confidence=confidence,
+                reason="Medium confidence — needs review",
+                priority="normal",
+                requires_human=True,
+            )
+
         return RoutingDecision(
-            action="auto_send",
+            action="escalate",
             confidence=confidence,
-            reason="TODO: implement routing logic",
-            priority="low",
-            requires_human=False,
-        )  # TODO: Replace with implementation
+            reason="Low confidence — escalating",
+            priority="high",
+            requires_human=True,
+        )
 
 
 # ============================================================
@@ -115,33 +142,33 @@ class ConfidenceRouter:
 hitl_decision_points = [
     {
         "id": 1,
-        "name": "TODO: Name this decision point",
-        "trigger": "TODO: When does this trigger?",
-        "hitl_model": "TODO: human-in-the-loop / human-on-the-loop / human-as-tiebreaker",
-        "context_needed": "TODO: What does the reviewer need to see?",
-        "example": "TODO: Give a concrete example scenario",
-        "approval_path": "TODO: Explain approve, reject and timeout behavior",
-        "audit_fields": "TODO: List correlation ID, intent, diff and reviewer decision",
+        "name": "High-Value Money Transfer Approval",
+        "trigger": "action_type == 'transfer_money' or transfer amount >= 50,000,000 VND",
+        "hitl_model": "human-in-the-loop",
+        "context_needed": "Customer ID, source/destination account numbers, transfer amount, fraud risk score, recent transaction velocity.",
+        "example": "Customer asks assistant to transfer 100,000,000 VND to a newly added external beneficiary.",
+        "approval_path": "Requires explicit HITL-[A-Z0-9]{8} approval token from authorized reviewer; rejects or times out after 15 minutes (fail-closed).",
+        "audit_fields": "correlation_id, user_id, intent='transfer_money', proposed_payload_diff, reviewer_id, approval_id, decision_timestamp",
     },
     {
         "id": 2,
-        "name": "TODO: Name this decision point",
-        "trigger": "TODO: When does this trigger?",
-        "hitl_model": "TODO: human-in-the-loop / human-on-the-loop / human-as-tiebreaker",
-        "context_needed": "TODO: What does the reviewer need to see?",
-        "example": "TODO: Give a concrete example scenario",
-        "approval_path": "TODO: Explain approve, reject and timeout behavior",
-        "audit_fields": "TODO: List correlation ID, intent, diff and reviewer decision",
+        "name": "Account Closure & Personal Data Deletion",
+        "trigger": "action_type in {'close_account', 'delete_data', 'change_password'}",
+        "hitl_model": "human-in-the-loop",
+        "context_needed": "Account status, outstanding loan/credit balances, pending settlements, identity verification status (KYC/CCCD).",
+        "example": "Customer requests immediate permanent closure of their savings and current accounts.",
+        "approval_path": "Queued for specialist verification; executes only upon recorded approve decision; timeout cancels destructive action.",
+        "audit_fields": "correlation_id, user_id, intent, account_snapshot_hash, reviewer_id, approval_id, decision_reason",
     },
     {
         "id": 3,
-        "name": "TODO: Name this decision point",
-        "trigger": "TODO: When does this trigger?",
-        "hitl_model": "TODO: human-in-the-loop / human-on-the-loop / human-as-tiebreaker",
-        "context_needed": "TODO: What does the reviewer need to see?",
-        "example": "TODO: Give a concrete example scenario",
-        "approval_path": "TODO: Explain approve, reject and timeout behavior",
-        "audit_fields": "TODO: List correlation ID, intent, diff and reviewer decision",
+        "name": "Ambiguous Policy / Low-Confidence Loan Advisory",
+        "trigger": "0.7 <= confidence < 0.9 on loan/interest rate quotes or safety judge disagreement",
+        "hitl_model": "human-as-tiebreaker",
+        "context_needed": "User query, retrieved RAG policy passages, draft response, confidence score, and guardrail flags.",
+        "example": "Customer asks whether a special promotional home loan APR applies to refinancing an existing VinBank loan.",
+        "approval_path": "Draft queued for human specialist review; reviewer can approve as-is, edit response, or escalate; timeout sends safe fallback linking official hotline.",
+        "audit_fields": "correlation_id, user_id, intent='policy_advisory', draft_ vs_final_diff, reviewer_id, decision",
     },
 ]
 

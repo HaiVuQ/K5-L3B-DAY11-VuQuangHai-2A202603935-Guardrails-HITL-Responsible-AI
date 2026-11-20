@@ -44,13 +44,32 @@ async def chat_with_agent(agent, runner, user_message: str, session_id=None):
         parts=[types.Part.from_text(text=user_message)],
     )
 
+    import asyncio
+
     final_response = ""
-    async for event in runner.run_async(
-        user_id=user_id, session_id=session.id, new_message=content
-    ):
-        if hasattr(event, "content") and event.content and event.content.parts:
-            for part in event.content.parts:
-                if hasattr(part, "text") and part.text:
-                    final_response += part.text
+    last_exc = None
+    for attempt in range(4):
+        final_response = ""
+        try:
+            async for event in runner.run_async(
+                user_id=user_id, session_id=session.id, new_message=content
+            ):
+                if hasattr(event, "content") and event.content and event.content.parts:
+                    for part in event.content.parts:
+                        if hasattr(part, "text") and part.text:
+                            final_response += part.text
+            last_exc = None
+            break
+        except Exception as exc:
+            last_exc = exc
+            if "503" in str(exc) or "429" in str(exc) or "UNAVAILABLE" in str(exc):
+                await asyncio.sleep(2.5 * (attempt + 1))
+                session = await runner.session_service.create_session(
+                    app_name=app_name, user_id=user_id
+                )
+                continue
+            raise
+    if last_exc is not None:
+        raise last_exc
 
     return final_response, session
